@@ -187,7 +187,7 @@ def disk_analyzer_view(analysis: list, selected_disk: int = 0, scroll_offset: in
         f"{theme.styled_percent(pct)}"
     )
     
-    nav_info = f"[dim]←/→ para trocar disco ({selected_disk + 1}/{len(analysis)}) | ↑/↓ para rolar lista[/dim]"
+    nav_info = f"[dim]A/D (←/→) para trocar disco ({selected_disk + 1}/{len(analysis)}) | W/S (↑/↓) para rolar lista[/dim]"
 
     # Block map (uses top 20 items max)
     block_map = _make_block_map(items[:20], used, width=100, height=6)

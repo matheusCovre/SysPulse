@@ -360,17 +360,17 @@ def main():
                             break
                         # Handle arrows for tab 2
                         elif active_tab == 2:
-                            if key == "UP":
+                            if key in ("UP", "w", "W"):
                                 disk_scroll_offset = max(0, disk_scroll_offset - 1)
                                 break
-                            elif key == "DOWN":
+                            elif key in ("DOWN", "s", "S"):
                                 disk_scroll_offset += 1
                                 break
-                            elif key == "LEFT":
+                            elif key in ("LEFT", "a", "A"):
                                 disk_selected_idx = max(0, disk_selected_idx - 1)
                                 disk_scroll_offset = 0
                                 break
-                            elif key == "RIGHT":
+                            elif key in ("RIGHT", "d", "D"):
                                 disk_selected_idx += 1
                                 disk_scroll_offset = 0
                                 break
