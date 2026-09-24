@@ -91,25 +91,39 @@ def _get_temperatures() -> Dict[str, Optional[float]]:
             except Exception:
                 continue
                 
-        # Fallback to thermal_zone for ARM/Rockchip boards
+        # Fallback to thermal_zone for ARM/Rockchip/generic boards
         if temps['package'] is None and not temps['cores']:
             thermal_dir = '/sys/class/thermal'
             if os.path.exists(thermal_dir):
-                for tz in os.listdir(thermal_dir):
-                    if tz.startswith('thermal_zone'):
-                        tz_path = os.path.join(thermal_dir, tz)
-                        try:
-                            with open(os.path.join(tz_path, 'type'), 'r') as f:
-                                t_type = f.read().strip().lower()
-                            # Look for common ARM/Rockchip CPU thermal zones
-                            if 'cpu' in t_type or 'soc' in t_type or 'big' in t_type or 'lit' in t_type or 'center' in t_type or 'core' in t_type:
-                                with open(os.path.join(tz_path, 'temp'), 'r') as f:
-                                    t_val = int(f.read().strip())
-                                    # Some expose millidegrees, some just degrees.
-                                    t_val = t_val / 1000.0 if t_val > 1000 else float(t_val)
-                                    temps['cores'].append((-1, t_val))
-                        except Exception:
+                zone_temps = []
+                for tz in sorted(os.listdir(thermal_dir)):
+                    if not tz.startswith('thermal_zone'):
+                        continue
+                    tz_path = os.path.join(thermal_dir, tz)
+                    try:
+                        with open(os.path.join(tz_path, 'type'), 'r') as f:
+                            t_type = f.read().strip().lower()
+                        with open(os.path.join(tz_path, 'temp'), 'r') as f:
+                            t_val = int(f.read().strip())
+                            # millidegrees -> degrees
+                            t_val = t_val / 1000.0 if t_val > 1000 else float(t_val)
+                        
+                        # Skip invalid readings
+                        if t_val <= 0 or t_val > 150:
                             continue
+                        
+                        # Categorize: package-like vs core-like
+                        if 'soc' in t_type or 'package' in t_type:
+                            temps['package'] = t_val
+                        else:
+                            # Store all valid zones as "cores" 
+                            zone_temps.append((t_type, t_val))
+                    except Exception:
+                        continue
+                
+                # Add all zone temps as cores
+                for idx, (name, val) in enumerate(zone_temps):
+                    temps['cores'].append((idx, val))
         
         # Sort cores by number if available
         if temps['cores']:

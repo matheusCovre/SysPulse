@@ -246,8 +246,36 @@ def get_total_power() -> Dict[str, Any]:
             total += g["watts"]
             breakdown[g["name"]] = g["watts"]
 
+    # If no real sensor found at all, estimate from CPU usage
+    # Common ARM SoC TDPs: RK3568 ~4W, RK3588 ~10W
+    has_real_data = cpu["available"] or gpu["available"] or bool(arm)
+    if not has_real_data:
+        try:
+            import psutil
+            cpu_percent = psutil.cpu_percent()
+            # Detect SoC to pick TDP estimate
+            soc_tdp = 4.0  # Default for RK3568
+            try:
+                with open("/proc/device-tree/compatible", "rb") as f:
+                    compat = f.read().decode("utf-8", errors="ignore").lower()
+                if "rk3588" in compat:
+                    soc_tdp = 10.0
+                elif "rk3399" in compat:
+                    soc_tdp = 6.0
+                elif "rk3566" in compat or "rk3568" in compat:
+                    soc_tdp = 4.0
+            except Exception:
+                pass
+
+            estimated_watts = round(soc_tdp * (cpu_percent / 100.0) * 0.7 + soc_tdp * 0.3, 2)
+            total = estimated_watts
+            breakdown["CPU SoC (estimado)"] = estimated_watts
+            has_real_data = True
+        except Exception:
+            pass
+
     return {
-        "total_watts": round(total, 2) if (cpu["available"] or gpu["available"]) else None,
+        "total_watts": round(total, 2) if has_real_data else None,
         "breakdown": breakdown,
         "cpu": cpu,
         "gpu": gpu,
