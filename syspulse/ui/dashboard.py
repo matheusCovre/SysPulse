@@ -68,37 +68,64 @@ def build_dashboard(
     # Header with tabs
     layout["header"].update(create_tab_header(active_tab=1))
 
-    # Upper section: CPU | GPU | Energy
-    layout["upper"].split_row(
-        Layout(name="cpu", ratio=3),
-        Layout(name="gpu", ratio=3),
-        Layout(name="energy", ratio=2),
-    )
+    has_gpu = gpu_data.get("available", False) and gpu_data.get("gpus")
 
-    # CPU + RAM stacked
-    cpu_and_ram = Layout()
-    cpu_and_ram.split_column(
-        Layout(name="cpu_panel", ratio=3),
-        Layout(name="ram_panel", ratio=1),
-    )
-    cpu_and_ram["cpu_panel"].update(widgets.cpu_panel(cpu_data))
-    cpu_and_ram["ram_panel"].update(widgets.memory_panel(mem_data))
+    if has_gpu:
+        # Upper section: CPU | GPU | Energy
+        layout["upper"].split_row(
+            Layout(name="cpu", ratio=3),
+            Layout(name="gpu", ratio=3),
+            Layout(name="energy", ratio=2),
+        )
 
-    layout["cpu"].update(cpu_and_ram)
+        # CPU + RAM stacked
+        cpu_and_ram = Layout()
+        cpu_and_ram.split_column(
+            Layout(name="cpu_panel", ratio=3),
+            Layout(name="ram_panel", ratio=1),
+        )
+        cpu_and_ram["cpu_panel"].update(widgets.cpu_panel(cpu_data))
+        cpu_and_ram["ram_panel"].update(widgets.memory_panel(mem_data))
+        layout["cpu"].update(cpu_and_ram)
 
-    # GPU + Latency stacked
-    gpu_and_lat = Layout()
-    gpu_and_lat.split_column(
-        Layout(name="gpu_panel", ratio=2),
-        Layout(name="lat_panel", ratio=1),
-    )
-    gpu_and_lat["gpu_panel"].update(widgets.gpu_panel(gpu_data))
-    gpu_and_lat["lat_panel"].update(widgets.latency_panel(latency_data))
+        # GPU + Latency stacked
+        gpu_and_lat = Layout()
+        gpu_and_lat.split_column(
+            Layout(name="gpu_panel", ratio=2),
+            Layout(name="lat_panel", ratio=1),
+        )
+        gpu_and_lat["gpu_panel"].update(widgets.gpu_panel(gpu_data))
+        gpu_and_lat["lat_panel"].update(widgets.latency_panel(latency_data))
+        layout["gpu"].update(gpu_and_lat)
 
-    layout["gpu"].update(gpu_and_lat)
+        # Energy panel
+        layout["energy"].update(widgets.energy_panel(energy_data))
+    else:
+        # No GPU: CPU gets more space, latency goes next to energy
+        layout["upper"].split_row(
+            Layout(name="cpu", ratio=4),
+            Layout(name="side", ratio=2),
+        )
 
-    # Energy panel
-    layout["energy"].update(widgets.energy_panel(energy_data))
+        # CPU + RAM stacked (CPU panel gets much more room for all cores)
+        cpu_and_ram = Layout()
+        cpu_and_ram.split_column(
+            Layout(name="cpu_panel", ratio=4),
+            Layout(name="ram_panel", ratio=1),
+        )
+        cpu_and_ram["cpu_panel"].update(widgets.cpu_panel(cpu_data))
+        cpu_and_ram["ram_panel"].update(widgets.memory_panel(mem_data))
+        layout["cpu"].update(cpu_and_ram)
+
+        # Energy + Latency stacked on the side
+        side = Layout()
+        side.split_column(
+            Layout(name="energy_panel", ratio=2),
+            Layout(name="lat_panel", ratio=1),
+        )
+        side["energy_panel"].update(widgets.energy_panel(energy_data))
+        side["lat_panel"].update(widgets.latency_panel(latency_data))
+        layout["side"].update(side)
 
     # Middle section: Disks | USB
     layout["middle"].split_row(
