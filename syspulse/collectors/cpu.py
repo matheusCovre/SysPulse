@@ -91,6 +91,26 @@ def _get_temperatures() -> Dict[str, Optional[float]]:
             except Exception:
                 continue
                 
+        # Fallback to thermal_zone for ARM/Rockchip boards
+        if temps['package'] is None and not temps['cores']:
+            thermal_dir = '/sys/class/thermal'
+            if os.path.exists(thermal_dir):
+                for tz in os.listdir(thermal_dir):
+                    if tz.startswith('thermal_zone'):
+                        tz_path = os.path.join(thermal_dir, tz)
+                        try:
+                            with open(os.path.join(tz_path, 'type'), 'r') as f:
+                                t_type = f.read().strip().lower()
+                            # Look for common ARM/Rockchip CPU thermal zones
+                            if 'cpu' in t_type or 'soc' in t_type or 'bbig' in t_type or 'lit' in t_type:
+                                with open(os.path.join(tz_path, 'temp'), 'r') as f:
+                                    t_val = int(f.read().strip())
+                                    # Some expose millidegrees, some just degrees.
+                                    t_val = t_val / 1000.0 if t_val > 1000 else float(t_val)
+                                    temps['cores'].append((-1, t_val))
+                        except Exception:
+                            continue
+        
         # Sort cores by number if available
         if temps['cores']:
             temps['cores'].sort(key=lambda x: x[0])

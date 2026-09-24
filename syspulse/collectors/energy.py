@@ -173,21 +173,72 @@ def get_gpu_power() -> Dict[str, Any]:
     return result
 
 
+def get_arm_power() -> Dict[str, float]:
+    """
+    Attempt to read power consumption on ARM boards (like Firefly RK3588)
+    via /sys/class/power_supply or generic hwmon.
+    """
+    power_readings = {}
+    
+    # 1. Try power_supply (e.g. PMIC like RK808, RK818, battery)
+    ps_dir = "/sys/class/power_supply"
+    if os.path.exists(ps_dir):
+        for ps in os.listdir(ps_dir):
+            ps_path = os.path.join(ps_dir, ps)
+            try:
+                curr_str = _read_sysfs(os.path.join(ps_path, "current_now"))
+                volt_str = _read_sysfs(os.path.join(ps_path, "voltage_now"))
+                if curr_str and volt_str:
+                    curr = abs(int(curr_str)) / 1_000_000  # A
+                    volt = int(volt_str) / 1_000_000  # V
+                    watts = curr * volt
+                    if watts > 0:
+                        power_readings[ps] = round(watts, 2)
+            except Exception:
+                continue
+
+    # 2. Try generic hwmon power sensors (power*_input in microwatts)
+    hwmon_dir = "/sys/class/hwmon"
+    if os.path.exists(hwmon_dir):
+        for hwmon in os.listdir(hwmon_dir):
+            hwmon_path = os.path.join(hwmon_dir, hwmon)
+            try:
+                name = _read_sysfs(os.path.join(hwmon_path, "name")) or hwmon
+                for file in os.listdir(hwmon_path):
+                    if file.startswith("power") and file.endswith("_input"):
+                        val = _read_sysfs(os.path.join(hwmon_path, file))
+                        if val:
+                            watts = int(val) / 1_000_000
+                            power_readings[f"{name}_{file.split('_')[0]}"] = round(watts, 2)
+            except Exception:
+                continue
+
+    return power_readings
+
+
 def get_total_power() -> Dict[str, Any]:
     """
     Get estimated total system power consumption.
-    Combines CPU (RAPL) + GPU (NVML/sysfs) readings.
+    Combines CPU (RAPL) + GPU (NVML/sysfs) readings + ARM PMIC.
     """
     cpu = get_cpu_power()
     gpu = get_gpu_power()
+    arm = get_arm_power()
 
     total = 0.0
     breakdown = {}
 
     if cpu["available"] and cpu["total_watts"] is not None:
         total += cpu["total_watts"]
-        breakdown["CPU"] = cpu["total_watts"]
+        breakdown["CPU (RAPL)"] = cpu["total_watts"]
         for domain, watts in cpu["domains"].items():
+            breakdown[f"  {domain}"] = watts
+    elif arm:
+        # Use ARM readings if Intel RAPL is not available
+        arm_total = sum(arm.values())
+        total += arm_total
+        breakdown["SoC/Placa (ARM)"] = round(arm_total, 2)
+        for domain, watts in arm.items():
             breakdown[f"  {domain}"] = watts
 
     if gpu["available"]:
