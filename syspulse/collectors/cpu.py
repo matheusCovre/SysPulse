@@ -102,7 +102,7 @@ def _get_temperatures() -> Dict[str, Optional[float]]:
                             with open(os.path.join(tz_path, 'type'), 'r') as f:
                                 t_type = f.read().strip().lower()
                             # Look for common ARM/Rockchip CPU thermal zones
-                            if 'cpu' in t_type or 'soc' in t_type or 'bbig' in t_type or 'lit' in t_type:
+                            if 'cpu' in t_type or 'soc' in t_type or 'big' in t_type or 'lit' in t_type or 'center' in t_type or 'core' in t_type:
                                 with open(os.path.join(tz_path, 'temp'), 'r') as f:
                                     t_val = int(f.read().strip())
                                     # Some expose millidegrees, some just degrees.
