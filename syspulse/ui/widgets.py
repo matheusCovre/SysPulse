@@ -18,84 +18,119 @@ from . import theme
 # CPU PANEL
 # ═══════════════════════════════════════════════
 
+def _core_label(i, usage, cpu_data):
+    """Build a single core label string with temp and freq."""
+    core_temps = cpu_data["temperature"].get("cores", [])
+    num_logical = len(cpu_data["per_cpu_usage"])
+    num_temps = len(core_temps)
+
+    temp_str = ""
+    if num_temps > 0:
+        t_idx = i if num_temps == num_logical else int(i / max(1, num_logical / num_temps))
+        if t_idx < num_temps:
+            t_val = core_temps[t_idx]
+            t_color = "red" if t_val > 85 else "yellow" if t_val > 70 else "green" if t_val > 50 else "cyan"
+            temp_str = f" [{t_color}]{t_val:.0f}°[/{t_color}]"
+
+    freq_per = cpu_data["frequency"].get("per_cpu", [])
+    if i < len(freq_per):
+        core_freq = format_frequency(freq_per[i].get("current"))
+        return f"C{i}{temp_str} [dim]{core_freq}[/dim]"
+    return f"C{i}{temp_str}"
+
+
 def cpu_panel(cpu_data: dict) -> Panel:
     """Generate the CPU monitoring panel with per-core bars."""
-    t = Table(show_header=False, box=None, padding=(0, 1), expand=True)
-    t.add_column("Label", style="bold", width=12, no_wrap=True)
-    t.add_column("Bar", min_width=22)
-    t.add_column("Value", width=8, justify="right")
+    num_cores = len(cpu_data["per_cpu_usage"])
+    use_two_cols = num_cores > 8
 
     # Model and arch
     arch_badge = f"[bold cyan]{cpu_data['arch'].upper()}[/bold cyan]"
-    model_text = f"[bold]{cpu_data['model']}[/bold] {arch_badge}"
 
     # Temperature
     temp = cpu_data["temperature"]
-    temp_str = theme.styled_temp(temp.get("package"))
+    temp_val = theme.styled_temp(temp.get("package"))
 
     # Frequency
     freq = cpu_data["frequency"]
     freq_str = format_frequency(freq.get("current"))
 
-    # Header info line
-    header = f"{model_text}  {theme.SYM_TEMP}{temp_str}  {freq_str}  " \
-             f"[dim]Cores: {cpu_data['physical_cores']}P/{cpu_data['logical_cores']}L[/dim]"
-
-    # Total usage bar
-    total = cpu_data["total_usage"]
-    t.add_row(
-        "[bold]Total[/bold]",
-        theme.styled_bar(total, width=24),
-        theme.styled_percent(total),
-    )
-
-    # Per-core usage bars
-    core_temps = cpu_data["temperature"].get("cores", [])
-    num_logical = len(cpu_data["per_cpu_usage"])
-    num_temps = len(core_temps)
-
-    for i, usage in enumerate(cpu_data["per_cpu_usage"]):
-        core_label = f"Core {i}"
-
-        # Get per-core temp (mapping logical to physical core if needed)
-        temp_str = ""
-        if num_temps > 0:
-            t_idx = i if num_temps == num_logical else int(i / (num_logical / num_temps))
-            if t_idx < num_temps:
-                t_val = core_temps[t_idx]
-                t_color = "red" if t_val > 85 else "yellow" if t_val > 70 else "green" if t_val > 50 else "cyan"
-                temp_str = f" [{t_color}]{t_val:.0f}°[/{t_color}]"
-
-        # Per-core frequency if available
-        freq_per = cpu_data["frequency"].get("per_cpu", [])
-        if i < len(freq_per):
-            core_freq = format_frequency(freq_per[i].get("current"))
-            core_label = f"Core {i}{temp_str} [dim]{core_freq}[/dim]"
-        else:
-            core_label = f"Core {i}{temp_str}"
-
-        t.add_row(
-            core_label,
-            theme.styled_bar(usage, width=24),
-            theme.styled_percent(usage),
-        )
-
     # Load average
     la = cpu_data["load_avg"]
     load_line = f"[dim]Load Avg: {la['1min']:.2f} {la['5min']:.2f} {la['15min']:.2f}[/dim]"
 
-    content = Text()
-    content.append_text(Text.from_markup(header))
-    content.append("\n")
-    content.append_text(Text.from_markup(load_line))
+    if use_two_cols:
+        # Two-column layout for many cores (> 8)
+        half = (num_cores + 1) // 2
 
-    return Panel(
-        t,
-        title=f"{theme.SYM_CPU} CPU — {cpu_data['model'][:40]}",
-        subtitle=load_line,
-        border_style=theme.BORDER_CPU,
-        padding=(0, 1),
-    )
+        left_t = Table(show_header=False, box=None, padding=(0, 0), expand=True)
+        left_t.add_column("L", width=18, no_wrap=True)
+        left_t.add_column("B", min_width=10)
+        left_t.add_column("V", width=5, justify="right")
+
+        right_t = Table(show_header=False, box=None, padding=(0, 0), expand=True)
+        right_t.add_column("L", width=18, no_wrap=True)
+        right_t.add_column("B", min_width=10)
+        right_t.add_column("V", width=5, justify="right")
+
+        # Total usage in left column
+        total = cpu_data["total_usage"]
+        left_t.add_row(
+            "[bold]Total[/bold]",
+            theme.styled_bar(total, width=12),
+            theme.styled_percent(total),
+        )
+        right_t.add_row("", "", "")
+
+        for i, usage in enumerate(cpu_data["per_cpu_usage"]):
+            label = _core_label(i, usage, cpu_data)
+            row = (label, theme.styled_bar(usage, width=12), theme.styled_percent(usage))
+            if i < half:
+                left_t.add_row(*row)
+            else:
+                right_t.add_row(*row)
+
+        outer = Table(show_header=False, box=None, padding=(0, 1), expand=True)
+        outer.add_column("left", ratio=1)
+        outer.add_column("right", ratio=1)
+        outer.add_row(left_t, right_t)
+
+        return Panel(
+            outer,
+            title=f"{theme.SYM_CPU} CPU — {cpu_data['model'][:40]}  {theme.SYM_TEMP}{temp_val}  {freq_str}",
+            subtitle=load_line,
+            border_style=theme.BORDER_CPU,
+            padding=(0, 1),
+        )
+    else:
+        # Single column for <= 8 cores
+        t = Table(show_header=False, box=None, padding=(0, 1), expand=True)
+        t.add_column("Label", style="bold", width=12, no_wrap=True)
+        t.add_column("Bar", min_width=22)
+        t.add_column("Value", width=8, justify="right")
+
+        total = cpu_data["total_usage"]
+        t.add_row(
+            "[bold]Total[/bold]",
+            theme.styled_bar(total, width=24),
+            theme.styled_percent(total),
+        )
+
+        for i, usage in enumerate(cpu_data["per_cpu_usage"]):
+            label = _core_label(i, usage, cpu_data)
+            t.add_row(
+                label,
+                theme.styled_bar(usage, width=24),
+                theme.styled_percent(usage),
+            )
+
+        return Panel(
+            t,
+            title=f"{theme.SYM_CPU} CPU — {cpu_data['model'][:40]}",
+            subtitle=load_line,
+            border_style=theme.BORDER_CPU,
+            padding=(0, 1),
+        )
 
 
 # ═══════════════════════════════════════════════
